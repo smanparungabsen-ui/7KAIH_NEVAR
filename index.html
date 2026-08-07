@@ -249,12 +249,21 @@
         .catch(e => console.error("Post Error:", e));
       };
 
+      // PERBAIKAN: Memastikan pemfilteran kebal spasi menggunakan .trim()
       const getFilteredStudents = () => {
-        if (auth?.role === 'wali') return dbSiswa.filter(u => u.kelas.toUpperCase() === auth.kelas.toUpperCase());
-        return dbSiswa;
+        if (auth?.role === 'wali') {
+            return dbSiswa.filter(u => String(u.kelas).trim().toUpperCase() === String(auth.kelas).trim().toUpperCase());
+        }
+        if (auth?.role === 'ortu') {
+            return dbSiswa.filter(u => String(u.nis).trim() === String(auth.nisAnak).trim());
+        }
+        if (auth?.role === 'siswa') {
+            return dbSiswa.filter(u => String(u.nis).trim() === String(auth.nis).trim());
+        }
+        return dbSiswa; // Admin sees all
       };
 
-      const getStudentProfile = (nis) => dbSiswa.find(u => u.nis === nis) || { nama: 'Siswa', kelas: '-', nis, agama: 'Islam', walikelas: '-', ortu: '-' };
+      const getStudentProfile = (nis) => dbSiswa.find(u => String(u.nis).trim() === String(nis).trim()) || { nama: 'Siswa', kelas: '-', nis, agama: 'Islam', walikelas: '-', ortu: '-' };
 
       const Header = () => (
         <header className="bg-indigo-700 text-white shadow-lg sticky top-0 z-40 no-print">
@@ -335,21 +344,25 @@
           setLoading(false);
 
           let queryRole = role;
-          if (role === 'wali' && id.toLowerCase() === 'admin') queryRole = 'admin';
+          if (role === 'wali' && id.toLowerCase().trim() === 'admin') queryRole = 'admin';
 
-          const validAccount = dbAkun.find(a => String(a.role).toLowerCase() === queryRole && String(a.username).toLowerCase() === String(id).toLowerCase() && String(a.password) === String(pass));
+          // PERBAIKAN: Menambahkan .trim() untuk memastikan tidak ada spasi pengganggu saat mencocokkan kredensial
+          const validAccount = dbAkun.find(a => 
+            String(a.role).trim().toLowerCase() === queryRole && 
+            String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase() && 
+            String(a.password).trim() === String(pass).trim()
+          );
 
           if (validAccount) {
-            // Kita mengambil kelas binaan langsung dari database menggunakan kolom "target"
-            let authData = { role: queryRole, id, nama: validAccount.nama || validAccount.keterangan, kelas: validAccount.target || 'ALL' };
+            let authData = { role: queryRole, id: String(id).trim(), nama: validAccount.nama || validAccount.keterangan, kelas: validAccount.target || 'ALL' };
             
             if (queryRole === 'siswa') {
-              const user = dbSiswa.find(u => String(u.nis) === String(id));
-              authData = { role: 'siswa', nis: id, nama: validAccount.nama, profile: user || { nama: `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
+              const user = dbSiswa.find(u => String(u.nis).trim() === String(id).trim());
+              authData = { role: 'siswa', nis: String(id).trim(), nama: validAccount.nama, profile: user || { nama: `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
             }
             if (queryRole === 'ortu') {
-              const user = dbSiswa.find(u => String(u.nis) === String(id));
-              authData = { role: 'ortu', nisAnak: id, nama: validAccount.nama || 'Orang Tua', profileAnak: user };
+              const user = dbSiswa.find(u => String(u.nis).trim() === String(id).trim());
+              authData = { role: 'ortu', nisAnak: String(id).trim(), nama: validAccount.nama || 'Orang Tua', profileAnak: user };
             }
 
             localStorage.setItem('jurnal7kaih_auth', JSON.stringify(authData));
@@ -474,7 +487,6 @@
               </div>
             </div>
             
-            {}
             <form onSubmit={e => submitHabit(e, 'bangun_pagi', { jam: e.target.elements.jam.value, ket: e.target.elements.ket.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-amber-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-amber-100 text-amber-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">1</span> Kebiasaan Bangun Pagi</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
@@ -537,7 +549,6 @@
               </button>
             </form>
 
-            {}
             <form onSubmit={e => submitHabit(e, 'olahraga', { jam: e.target.elements.jam.value, jenis: e.target.elements.jenis.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-blue-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-blue-100 text-blue-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">3</span> Kebiasaan Berolahraga</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
@@ -582,7 +593,6 @@
               </button>
             </form>
 
-            {}
             <form onSubmit={e => submitHabit(e, 'masyarakat', { kegiatan: e.target.elements.kegiatan.value, ket: e.target.elements.ket.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-teal-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-teal-100 text-teal-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">6</span> Kebiasaan Bermasyarakat</h3>
               <div className="grid grid-cols-1 gap-4 mb-3">
