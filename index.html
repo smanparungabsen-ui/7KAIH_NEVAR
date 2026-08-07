@@ -68,7 +68,6 @@
       { nis: '11223344', nama: 'Daniel Mananta', kelas: 'XII SOSHUM 1', agama: 'Kristen', walikelas: 'Ibu Ratna', ortu: 'Bpk. Lucas' }
     ];
 
-    // Struktur DB Lokal diperbarui menyesuaikan pembaruan fitur (target/kelas binaan)
     const DEFAULT_AKUN = [
       { role: 'siswa', username: '12345678', password: '123', nama: 'Ahmad Raihan', target: '' },
       { role: 'siswa', username: '87654321', password: '123', nama: 'Siti Nurhaliza', target: '' },
@@ -475,6 +474,7 @@
               </div>
             </div>
             
+            {}
             <form onSubmit={e => submitHabit(e, 'bangun_pagi', { jam: e.target.elements.jam.value, ket: e.target.elements.ket.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-amber-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-amber-100 text-amber-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">1</span> Kebiasaan Bangun Pagi</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
@@ -537,6 +537,7 @@
               </button>
             </form>
 
+            {}
             <form onSubmit={e => submitHabit(e, 'olahraga', { jam: e.target.elements.jam.value, jenis: e.target.elements.jenis.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-blue-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-blue-100 text-blue-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">3</span> Kebiasaan Berolahraga</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
@@ -581,6 +582,7 @@
               </button>
             </form>
 
+            {}
             <form onSubmit={e => submitHabit(e, 'masyarakat', { kegiatan: e.target.elements.kegiatan.value, ket: e.target.elements.ket.value })} className="bg-white p-5 rounded-2xl shadow border-l-4 border-teal-400">
               <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4 border-b pb-2"><span className="bg-teal-100 text-teal-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">6</span> Kebiasaan Bermasyarakat</h3>
               <div className="grid grid-cols-1 gap-4 mb-3">
