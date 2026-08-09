@@ -6,7 +6,6 @@
   <title>Jurnal 7KAIH</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
   
@@ -37,7 +36,6 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
     
-    // PENANGANAN BUG LUCIDE CDN: Fallback aman agar tidak layar putih
     const lucideIcons = window.lucideReact || {};
     const FallbackIcon = () => <span></span>;
 
@@ -63,30 +61,9 @@
     const Eraser = lucideIcons.Eraser || FallbackIcon;
     const X = lucideIcons.X || FallbackIcon;
 
-    const DEFAULT_USERS = [
-      { nis: '12345678', nama: 'Ahmad Raihan (Sampel)', kelas: 'XII SAINS 1', agama: 'Islam', walikelas: 'Bpk. Hendro', ortu: 'Bpk. Hasan' },
-      { nis: '87654321', nama: 'Siti Nurhaliza', kelas: 'XII SAINS 1', agama: 'Islam', walikelas: 'Bpk. Hendro', ortu: 'Ibu Maryam' },
-      { nis: '11223344', nama: 'Daniel Mananta', kelas: 'XII SOSHUM 1', agama: 'Kristen', walikelas: 'Ibu Ratna', ortu: 'Bpk. Lucas' }
-    ];
-
-    const DEFAULT_AKUN = [
-      { role: 'siswa', username: '12345678', password: '123', nama: 'Ahmad Raihan', target: '' },
-      { role: 'siswa', username: '87654321', password: '123', nama: 'Siti Nurhaliza', target: '' },
-      { role: 'wali', username: '19820101', password: '123', nama: 'Bpk. Hendro', target: 'XII SAINS 1' },
-      { role: 'ortu', username: '12345678', password: '123', nama: 'Bpk. Hasan', target: '12345678' },
-      { role: 'admin', username: 'admin', password: '123', nama: 'Admin Pusat', target: 'ALL' }
-    ];
-
-    const MOCK_AKADEMIK_DATA = {
-      '12345678': {
-        absensi: { hadir: 45, ijin: 2, sakit: 1, alpa: 0, terlambat: 3 },
-        nilai: { tugas: 88, uh: 85, uts: 90, uas: 92 },
-        detail_tugas: [{ nama: 'Tugas 1: MTK', nilai: 90 }, { nama: 'Tugas 2: Sejarah', nilai: 85 }],
-        detail_uh: [{ nama: 'UH 1: Matematika', nilai: 80 }, { nama: 'UH 2: Bahasa Indonesia', nilai: 90 }],
-        pelanggaran: ["Terlambat masuk sekolah pada 12 Oktober."],
-        prestasi: ["Juara 1 Lomba Menggambar Antar Kelas"]
-      }
-    };
+    const DEFAULT_USERS = [];
+    const DEFAULT_AKUN = [];
+    const MOCK_AKADEMIK_DATA = {};
 
     const HABITS_INFO = [
         { key: 'bangun_pagi', label: '1. Bangun Pagi', short: 'Bangun' },
@@ -97,29 +74,6 @@
         { key: 'masyarakat', label: '6. Bermasyarakat', short: 'Sosial' },
         { key: 'tidur', label: '7. Tidur Cepat', short: 'Tidur' }
     ];
-
-    // === PERBAIKAN LOGIN ===
-    // cleanStr: membersihkan whitespace "tak kasat mata" yang sering ikut kepaste
-    // dari Word/PDF ke Google Sheets (non-breaking space \u00A0, zero-width space
-    // \u200B, dll). String.trim() bawaan JS TIDAK menghapus karakter ini, sehingga
-    // username/password yang terlihat sama persis di mata manusia bisa gagal
-    // dicocokkan oleh kode. Ini penyebab paling umum "sudah benar tapi tetap gagal".
-    const cleanStr = (v) => String(v === null || v === undefined ? '' : v)
-      .replace(/[\u00A0\u200B\u200C\u200D\uFEFF\u2028\u2029]/g, ' ')
-      .trim()
-      .replace(/\s+/g, ' ');
-
-    // normalizeRole: toleran terhadap variasi penulisan role di kolom 'role'
-    // sheet Akun ("Guru Wali", "Wali Kelas", "WALI ", dsb) sehingga tidak
-    // lagi gagal login hanya karena penulisan berbeda dari yang diharapkan.
-    const normalizeRole = (r) => {
-      const c = cleanStr(r).toLowerCase();
-      if (c.includes('ortu') || c.includes('orang tua')) return 'ortu';
-      if (c.includes('wali')) return 'wali'; // wali, guru wali, wali kelas
-      if (c.includes('admin')) return 'admin';
-      if (c.includes('siswa') || c.includes('murid')) return 'siswa';
-      return c;
-    };
 
     const SignatureCanvas = ({ onSave, onCancel, roleTitle }) => {
       const canvasRef = useRef(null);
@@ -223,42 +177,25 @@
       const [modalSig, setModalSig] = useState({ show: false, role: '' });
 
       const fetchData = async (isBackground = false) => {
-        if (!scriptUrl) return;
+        if (!scriptUrl) return null;
         try {
           if (!isBackground) setSyncStatus('Menarik Data...');
           const reqUrl = scriptUrl.includes('?') ? `${scriptUrl}&action=getUsers` : `${scriptUrl}?action=getUsers`;
-
-          const res = await fetch(reqUrl, { redirect: 'follow' });
-          const rawText = await res.text();
-
-          let data;
-          try {
-            data = JSON.parse(rawText);
-          } catch (parseErr) {
-            // Respon BUKAN JSON -> hampir pasti Google mengembalikan halaman
-            // login/izin (deployment "Who has access" belum "Anyone"),
-            // bukan data dari Sheet. Ini penyebab paling umum login gagal
-            // ketika HTML di-hosting terpisah (mis. di Vercel/GitHub Pages).
-            console.warn("Respon Apps Script bukan JSON (cek setting deployment 'Who has access'). Cuplikan respon:", rawText.slice(0, 200));
-            setSyncStatus('Gagal: Cek Akses Deployment');
-            return;
-          }
-
-          if (data && data.status === 'error') {
-            console.warn("Apps Script mengembalikan error:", data.message);
-            setSyncStatus('Gagal: Error di Script');
-            return;
-          }
-
+          
+          const res = await fetch(reqUrl);
+          const data = await res.json();
+          
           if (data && data.siswa) {
-            setDbSiswa(data.siswa.length > 0 ? data.siswa : DEFAULT_USERS);
-            setDbAkun(data.akun && data.akun.length > 0 ? data.akun : DEFAULT_AKUN);
+            setDbSiswa(data.siswa);
+            setDbAkun(data.akun);
             setSyncStatus('Sheets Terhubung');
+            return data; 
           }
         } catch (e) {
           console.warn("Fetch Error: ", e);
           setSyncStatus('Gagal Terhubung');
         }
+        return null;
       };
 
       useEffect(() => {
@@ -302,10 +239,10 @@
         if (auth?.role === 'siswa') {
             return dbSiswa.filter(u => String(u.nis).trim() === String(auth.nis).trim());
         }
-        return dbSiswa; // Admin sees all
+        return dbSiswa;
       };
 
-      const getStudentProfile = (nis) => dbSiswa.find(u => String(u.nis).trim() === String(nis).trim()) || { nama: 'Siswa', kelas: '-', nis, agama: 'Islam', walikelas: '-', ortu: '-' };
+      const getStudentProfile = (nis) => dbSiswa.find(u => String(u.nis).trim() === String(nis).trim()) || { nama: 'Siswa Belum Ditemukan', kelas: '-', nis, agama: 'Islam', walikelas: '-', ortu: '-' };
 
       const Header = () => (
         <header className="bg-indigo-700 text-white shadow-lg sticky top-0 z-40 no-print">
@@ -378,43 +315,37 @@
         const [id, setId] = useState('');
         const [pass, setPass] = useState('');
         const [loading, setLoading] = useState(false);
-        const [showDebug, setShowDebug] = useState(false);
-        const [lastError, setLastError] = useState('');
 
         const handleLogin = async (e) => {
           e.preventDefault();
           setLoading(true);
-          await fetchData(true);
+          
+          const latestData = await fetchData(true);
           setLoading(false);
 
           const queryRole = role;
+          const currentAkunData = latestData && latestData.akun ? latestData.akun : dbAkun;
+          const currentSiswaData = latestData && latestData.siswa ? latestData.siswa : dbSiswa;
 
-          // Pencocokan akun berdasarkan Sheet Google.
-          // Role dinormalisasi (lihat normalizeRole) agar toleran terhadap
-          // variasi penulisan seperti "Guru Wali", spasi ganda, dsb.
-          // Username & password dibersihkan dengan cleanStr agar karakter
-          // spasi tak-kasat-mata dari copy-paste tidak menggagalkan login.
-          const validAccount = dbAkun.find(a => 
-            normalizeRole(a.role) === queryRole && 
-            cleanStr(a.username).toLowerCase() === cleanStr(id).toLowerCase() && 
-            cleanStr(a.password) === cleanStr(pass)
+          const validAccount = currentAkunData.find(a => 
+            String(a.role).trim().toLowerCase() === queryRole && 
+            String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase() && 
+            String(a.password).trim() === String(pass).trim()
           );
 
           if (validAccount) {
             let authData = {};
             
             if (queryRole === 'siswa') {
-              const user = dbSiswa.find(u => String(u.nis).trim() === String(id).trim());
-              authData = { role: 'siswa', nis: String(id).trim(), nama: validAccount.nama, profile: user || { nama: `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
+              const user = currentSiswaData.find(u => String(u.nis).trim() === String(id).trim());
+              authData = { role: 'siswa', nis: String(id).trim(), nama: validAccount.nama, profile: user || { nama: validAccount.nama || `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
             }
             else if (queryRole === 'ortu') {
-              // Untuk Orang Tua: NISN Anak diambil HANYA DARI KOLOM TARGET di Sheet Akun
               const childNis = String(validAccount.target).trim();
-              const user = dbSiswa.find(u => String(u.nis).trim() === childNis);
+              const user = currentSiswaData.find(u => String(u.nis).trim() === childNis);
               authData = { role: 'ortu', nisAnak: childNis, nama: validAccount.nama || 'Orang Tua', profileAnak: user };
             }
             else if (queryRole === 'wali') {
-              // Untuk Guru Wali: Kelas yang diampu diambil HANYA DARI KOLOM TARGET di Sheet Akun
               authData = { role: 'wali', id: String(id).trim(), nama: validAccount.nama, kelas: String(validAccount.target).trim() };
             }
             else if (queryRole === 'admin') {
@@ -425,17 +356,7 @@
             setAuth(authData);
             showToast(`Login Berhasil sebagai ${queryRole.toUpperCase()}`);
           } else {
-            // Pesan error lebih spesifik untuk memudahkan diagnosa data di Spreadsheet
-            const roleExists = dbAkun.some(a => normalizeRole(a.role) === queryRole);
-            const userExists = dbAkun.some(a => normalizeRole(a.role) === queryRole && cleanStr(a.username).toLowerCase() === cleanStr(id).toLowerCase());
-            let msg = 'Login Gagal! ';
-            if (!roleExists) msg += `Tidak ada akun dengan role "${queryRole}" di Sheet Akun.`;
-            else if (!userExists) msg += `Username "${id}" tidak ditemukan untuk role ini.`;
-            else msg += 'Password salah.';
-            showToast(msg, 'error');
-            setLastError(msg);
-            setShowDebug(true); // buka panel debug otomatis agar terlihat langsung di HP
-            console.log('DEBUG dbAkun (isi Sheet Akun yang terbaca):', dbAkun);
+            showToast('Login Gagal! Periksa Username / Password di Spreadsheet.', 'error');
           }
         };
 
@@ -472,47 +393,6 @@
                 {loading ? <Activity className="animate-spin" size={20}/> : <ShieldCheck size={20}/>} {loading ? 'Memverifikasi...' : 'Masuk Sekarang'}
               </button>
             </form>
-
-            <button type="button" onClick={()=>setShowDebug(!showDebug)} className="mt-4 text-[10px] text-slate-400 hover:text-slate-600 underline w-full text-center">
-              {showDebug ? 'Sembunyikan' : 'Tidak bisa login? Lihat data akun tersimpan'}
-            </button>
-
-            {showDebug && (
-              <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-slate-600 mb-2">
-                  Status Sinkronisasi: <span className={syncStatus === 'Sheets Terhubung' ? 'text-emerald-600' : 'text-red-600'}>{syncStatus}</span>
-                  {syncStatus !== 'Sheets Terhubung' && <span className="block mt-1 text-red-500 normal-case">Aplikasi belum terhubung ke Google Sheets — periksa Link Web App lewat ikon cloud di pojok kanan atas, dan pastikan deployment Apps Script di-set "Who has access: Anyone".</span>}
-                </p>
-                {lastError && <p className="text-[10px] text-red-600 mb-2 font-semibold">{lastError}</p>}
-                <p className="text-[10px] font-bold text-slate-600 mb-1">Akun dengan role "{role}" yang terbaca dari Sheet Akun ({dbAkun.filter(a=>normalizeRole(a.role)===role).length} akun):</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[9px] border-collapse">
-                    <thead>
-                      <tr className="bg-slate-200 text-slate-700">
-                        <th className="p-1 border border-slate-300 text-left">role (asli)</th>
-                        <th className="p-1 border border-slate-300 text-left">username</th>
-                        <th className="p-1 border border-slate-300 text-left">panjang username</th>
-                        <th className="p-1 border border-slate-300 text-left">target/kelas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dbAkun.filter(a=>normalizeRole(a.role)===role).map((a,i) => (
-                        <tr key={i} className="odd:bg-white even:bg-slate-100">
-                          <td className="p-1 border border-slate-300 font-mono">"{a.role}"</td>
-                          <td className="p-1 border border-slate-300 font-mono">"{a.username}"</td>
-                          <td className="p-1 border border-slate-300 font-mono">{cleanStr(a.username).length} karakter</td>
-                          <td className="p-1 border border-slate-300 font-mono">"{a.target}"</td>
-                        </tr>
-                      ))}
-                      {dbAkun.filter(a=>normalizeRole(a.role)===role).length === 0 && (
-                        <tr><td colSpan="4" className="p-2 text-center text-slate-400 italic">Tidak ada baris dengan role ini di Sheet Akun</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[9px] text-slate-400 mt-2 italic">Bandingkan "panjang username" dengan jumlah digit NIP yang Anda ketik. Jika beda (misal 7 vs 8), berarti ada angka nol di depan yang hilang atau ada spasi tersembunyi di sheet — hapus isi sel tersebut lalu ketik ulang manual.</p>
-              </div>
-            )}
           </section>
         );
       };
@@ -733,7 +613,7 @@
         const student = getStudentProfile(nisToRender);
         const studentsList = getFilteredStudents();
 
-        if(!student || !student.nis) return <div className="text-center p-4">Tidak ada data siswa untuk kelas ini.</div>;
+        if(!student || !student.nis) return <div className="text-center p-4 text-slate-500 font-bold">Pilih siswa atau pastikan data siswa tersedia.</div>;
 
         const [y, m] = monthVal.split('-');
         const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 0;
@@ -1202,7 +1082,7 @@
               <div className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4">
                 <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6">
                   <h3 className="font-bold text-indigo-700 mb-2 flex items-center gap-2"><FileSpreadsheet/> Setup Endpoint Aplikasi</h3>
-                  <p className="text-xs text-slate-500 mb-4">Tempelkan Link Web App dari Google Apps Script di sini. (Aplikasi kamu sekarang sepenuhnya terkoneksi dengan Backend GAS!)</p>
+                  <p className="text-xs text-slate-500 mb-4">Tempelkan Link Web App dari Google Apps Script di sini. <br/><span className="text-red-600 font-bold mt-1 block">⚠️ PERHATIAN: Masukkan link Apps Script (akhiran /exec), BUKAN link Google Sheets!</span></p>
                   <input type="url" value={scriptUrl} onChange={e=>setScriptUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full p-3 border rounded-xl text-xs font-mono bg-slate-50 mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" />
                   <div className="flex justify-end gap-2">
                     <button onClick={() => setShowSetup(false)} className="px-4 py-2 border rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50">Tutup</button>
