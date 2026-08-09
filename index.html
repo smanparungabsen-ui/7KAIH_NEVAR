@@ -37,7 +37,6 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
     
-    // Melindungi sistem jika Ikon gagal termuat
     const lucideIcons = window.lucideReact || {};
     const FallbackIcon = () => <span></span>;
 
@@ -63,7 +62,7 @@
     const Eraser = lucideIcons.Eraser || FallbackIcon;
     const X = lucideIcons.X || FallbackIcon;
 
-    // Menghapus data demo sepenuhnya agar pure dari Spreadsheet
+    // Bersih dari Data Demo agar 100% mengambil dari Sheets
     const DEFAULT_USERS = [];
     const DEFAULT_AKUN = [];
     const MOCK_AKADEMIK_DATA = {};
@@ -156,10 +155,7 @@
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return d.toISOString().split('T')[0]; 
     };
-
-    const getLocalMonth = () => {
-        return getLocalDate().slice(0, 7); 
-    };
+    const getLocalMonth = () => getLocalDate().slice(0, 7); 
 
     function App() {
       const [auth, setAuth] = useState(() => JSON.parse(localStorage.getItem('jurnal7kaih_auth')) || null);
@@ -235,15 +231,17 @@
 
       const getFilteredStudents = () => {
         if (auth?.role === 'wali') {
-            return dbSiswa.filter(u => String(u.kelas).trim().toUpperCase() === String(auth.kelas).trim().toUpperCase());
+            const authKelas = String(auth.kelas || '').trim().toUpperCase();
+            return dbSiswa.filter(u => String(u.kelas || '').trim().toUpperCase() === authKelas);
         }
         if (auth?.role === 'ortu') {
-            return dbSiswa.filter(u => String(u.nis).trim() === String(auth.nisAnak).trim());
+            const authAnak = String(auth.nisAnak || '').trim();
+            return dbSiswa.filter(u => String(u.nis || '').trim() === authAnak);
         }
         if (auth?.role === 'siswa') {
-            return dbSiswa.filter(u => String(u.nis).trim() === String(auth.nis).trim());
+            return dbSiswa.filter(u => String(u.nis || '').trim() === String(auth.nis || '').trim());
         }
-        return dbSiswa;
+        return dbSiswa; // Admin lihat semua
       };
 
       const getStudentProfile = (nis) => dbSiswa.find(u => String(u.nis).trim() === String(nis).trim()) || { nama: 'Siswa Belum Ditemukan', kelas: '-', nis, agama: 'Islam', walikelas: '-', ortu: '-' };
@@ -330,7 +328,7 @@
             return;
           }
 
-          // Tarik data TERBARU secara real-time dari Spreadsheet saat tombol diklik
+          // 1. Tarik Data Segar (Real-time) saat tombol diklik
           const latestData = await fetchData(true);
           setLoading(false);
 
@@ -338,54 +336,67 @@
           const currentSiswaData = latestData && latestData.siswa ? latestData.siswa : dbSiswa;
 
           if (!currentAkunData || currentAkunData.length === 0) {
-            showToast('Data Akun dari Spreadsheet kosong! Pastikan Anda sudah membuat Deployment Baru di GAS.', 'error');
+            showToast('Data Akun dari Spreadsheet kosong! Pastikan Anda sudah membuat akun di Spreadsheet.', 'error');
             return;
           }
 
-          const queryRole = role; // 'siswa', 'wali', 'ortu', atau 'admin'
+          // 2. Pencarian Validasi Super Kuat
+          console.warn("--- MENCARI PENCOCOKAN LOGIN ---");
+          console.log(`Role Dipilih: ${role}, Input User: "${id}", Input Pass: "${pass}"`);
 
-          // MENCARI AKUN YANG COCOK
           const validAccount = currentAkunData.find(a => {
-            // Toleransi jika diketik "Guru Wali" / "Orang Tua" di Sheet Akun
-            const sheetRole = String(a.role).trim().toLowerCase();
-            let roleMatch = sheetRole === queryRole;
-            if (queryRole === 'wali' && (sheetRole === 'guru wali' || sheetRole === 'wali kelas')) roleMatch = true;
-            if (queryRole === 'ortu' && (sheetRole === 'orang tua' || sheetRole === 'orangtua')) roleMatch = true;
+            // Bersihkan data dari Google Sheets (menghindari spasi tak disengaja)
+            const sheetRole = String(a.role || '').trim().toLowerCase();
+            const sheetUser = String(a.username || a.nip || a.id || '').trim().toLowerCase();
+            const sheetPass = String(a.password || a.pass || a.sandi || '').trim();
 
-            const userMatch = String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase();
-            const passMatch = String(a.password).trim() === String(pass).trim();
+            let roleMatch = false;
+            // Toleransi pengetikan pada kolom Role di Spreadsheet
+            if (role === 'wali' && (sheetRole.includes('wali') || sheetRole.includes('guru'))) roleMatch = true;
+            else if (role === 'ortu' && (sheetRole.includes('ortu') || sheetRole.includes('orang') || sheetRole.includes('tua'))) roleMatch = true;
+            else if (sheetRole === role) roleMatch = true;
+
+            const userMatch = sheetUser === String(id).trim().toLowerCase();
+            const passMatch = sheetPass === String(pass).trim();
+            
+            // Console log ini akan membantu pelacakan jika ada kegagalan
+            if(roleMatch && userMatch) {
+               console.log(`[Ditemukan Akun] Tapi Password salah? Sheet: "${sheetPass}" vs Ketikan: "${String(pass).trim()}"`);
+            }
 
             return roleMatch && userMatch && passMatch;
           });
 
           if (validAccount) {
             let authData = {};
+            const sheetNama = validAccount.nama || validAccount.keterangan || '';
+            const sheetTarget = validAccount.target || validAccount.kelas || validAccount.nisn || '';
             
-            if (queryRole === 'siswa') {
+            if (role === 'siswa') {
               const user = currentSiswaData.find(u => String(u.nis).trim() === String(id).trim());
-              authData = { role: 'siswa', nis: String(id).trim(), nama: validAccount.nama, profile: user || { nama: validAccount.nama || `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
+              authData = { role: 'siswa', nis: String(id).trim(), nama: sheetNama, profile: user || { nama: sheetNama || `Siswa (${id})`, kelas: 'UMUM', nis: id, agama: 'Islam' } };
             }
-            else if (queryRole === 'ortu') {
-              const childNis = String(validAccount.target).trim();
+            else if (role === 'ortu') {
+              const childNis = String(sheetTarget).trim(); // Anak yang dipantau berdasar kolom Target
               const user = currentSiswaData.find(u => String(u.nis).trim() === childNis);
-              authData = { role: 'ortu', nisAnak: childNis, nama: validAccount.nama || 'Orang Tua', profileAnak: user };
+              authData = { role: 'ortu', nisAnak: childNis, nama: sheetNama || 'Orang Tua', profileAnak: user };
+              if (!childNis) showToast('PERINGATAN: Kolom Target/Anak kosong di Spreadsheet!', 'error');
             }
-            else if (queryRole === 'wali') {
-              authData = { role: 'wali', id: String(id).trim(), nama: validAccount.nama, kelas: String(validAccount.target).trim() };
+            else if (role === 'wali') {
+              const targetKelas = String(sheetTarget).trim();
+              authData = { role: 'wali', id: String(id).trim(), nama: sheetNama || 'Guru Wali', kelas: targetKelas };
+              if (!targetKelas) showToast('PERINGATAN: Kolom Target Kelas kosong di Spreadsheet!', 'error');
             }
-            else if (queryRole === 'admin') {
-              authData = { role: 'admin', id: String(id).trim(), nama: validAccount.nama, kelas: String(validAccount.target).trim() || 'ALL' };
+            else if (role === 'admin') {
+              authData = { role: 'admin', id: String(id).trim(), nama: sheetNama || 'Administrator', kelas: 'ALL' };
             }
 
             localStorage.setItem('jurnal7kaih_auth', JSON.stringify(authData));
             setAuth(authData);
-            showToast(`Login Berhasil sebagai ${queryRole.toUpperCase()}`);
+            showToast(`Login Berhasil sebagai ${role.toUpperCase()}`);
           } else {
-            console.warn("=== INFO DEBUG LOGIN ===");
-            console.warn("Anda mencoba masuk dengan:", { RoleDipilih: queryRole, InputUsername: id, InputPassword: pass });
-            console.warn("Data Akun yang terbaca dari Sheet Anda:", currentAkunData);
-            console.warn("========================");
-            showToast('Login Gagal! Username atau Password tidak cocok (Cek Console Browser).', 'error');
+            console.error("Login Gagal: Tidak ada baris di Spreadsheet yang benar-benar cocok 100%.");
+            showToast('Login Gagal! NIP/NISN atau Password tidak cocok.', 'error');
           }
         };
 
@@ -411,7 +422,7 @@
                   {role === 'siswa' ? 'NISN Siswa' : role === 'wali' ? 'NIP Guru Wali' : role === 'ortu' ? 'Username Orang Tua' : 'Username Admin'}
                 </label>
                 <input type="text" required value={id} onChange={e=>setId(e.target.value)} 
-                    placeholder="Masukkan Username / ID..." 
+                    placeholder="Masukkan ID / Username..." 
                     className="w-full px-4 py-3 border rounded-xl bg-slate-50 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
               <div>
@@ -949,7 +960,7 @@
           return { dates, target, activeHabits };
         };
 
-        const students = classFilter === 'ALL' ? dbSiswa : dbSiswa.filter(s => s.kelas.toUpperCase() === classFilter.toUpperCase());
+        const students = classFilter === 'ALL' ? dbSiswa : dbSiswa.filter(s => String(s.kelas).toUpperCase() === classFilter.toUpperCase());
         const { dates, target, activeHabits } = getTargetAndDates();
 
         return (
