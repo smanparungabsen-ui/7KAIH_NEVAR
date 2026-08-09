@@ -98,6 +98,18 @@
         { key: 'tidur', label: '7. Tidur Cepat', short: 'Tidur' }
     ];
 
+    // === PERBAIKAN LOGIN: normalisasi role agar toleran terhadap variasi penulisan ===
+    // Menangani kasus seperti "Guru Wali", "Wali Kelas", "WALI", spasi ganda, dsb
+    // yang ada di kolom 'role' pada sheet Akun, sehingga tidak lagi gagal login.
+    const normalizeRole = (r) => {
+      const c = String(r || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (c.includes('ortu') || c.includes('orang tua')) return 'ortu';
+      if (c.includes('wali')) return 'wali'; // wali, guru wali, wali kelas
+      if (c.includes('admin')) return 'admin';
+      if (c.includes('siswa') || c.includes('murid')) return 'siswa';
+      return c;
+    };
+
     const SignatureCanvas = ({ onSave, onCancel, roleTitle }) => {
       const canvasRef = useRef(null);
       const [isDrawing, setIsDrawing] = useState(false);
@@ -345,9 +357,11 @@
 
           const queryRole = role;
 
-          // Pencocokan akun SUPER KETAT berdasarkan Sheet Google
+          // Pencocokan akun berdasarkan Sheet Google.
+          // Role dinormalisasi (lihat normalizeRole) agar toleran terhadap
+          // variasi penulisan seperti "Guru Wali", spasi ganda, dsb.
           const validAccount = dbAkun.find(a => 
-            String(a.role).trim().toLowerCase() === queryRole && 
+            normalizeRole(a.role) === queryRole && 
             String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase() && 
             String(a.password).trim() === String(pass).trim()
           );
@@ -377,7 +391,15 @@
             setAuth(authData);
             showToast(`Login Berhasil sebagai ${queryRole.toUpperCase()}`);
           } else {
-            showToast('Login Gagal! Periksa Username / Password di Spreadsheet.', 'error');
+            // Pesan error lebih spesifik untuk memudahkan diagnosa data di Spreadsheet
+            const roleExists = dbAkun.some(a => normalizeRole(a.role) === queryRole);
+            const userExists = dbAkun.some(a => normalizeRole(a.role) === queryRole && String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase());
+            let msg = 'Login Gagal! ';
+            if (!roleExists) msg += `Tidak ada akun dengan role "${queryRole}" di Sheet Akun.`;
+            else if (!userExists) msg += `Username "${id}" tidak ditemukan untuk role ini.`;
+            else msg += 'Password salah.';
+            showToast(msg, 'error');
+            console.log('DEBUG dbAkun (isi Sheet Akun yang terbaca):', dbAkun);
           }
         };
 
