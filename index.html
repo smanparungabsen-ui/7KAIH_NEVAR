@@ -98,11 +98,22 @@
         { key: 'tidur', label: '7. Tidur Cepat', short: 'Tidur' }
     ];
 
-    // === PERBAIKAN LOGIN: normalisasi role agar toleran terhadap variasi penulisan ===
-    // Menangani kasus seperti "Guru Wali", "Wali Kelas", "WALI", spasi ganda, dsb
-    // yang ada di kolom 'role' pada sheet Akun, sehingga tidak lagi gagal login.
+    // === PERBAIKAN LOGIN ===
+    // cleanStr: membersihkan whitespace "tak kasat mata" yang sering ikut kepaste
+    // dari Word/PDF ke Google Sheets (non-breaking space \u00A0, zero-width space
+    // \u200B, dll). String.trim() bawaan JS TIDAK menghapus karakter ini, sehingga
+    // username/password yang terlihat sama persis di mata manusia bisa gagal
+    // dicocokkan oleh kode. Ini penyebab paling umum "sudah benar tapi tetap gagal".
+    const cleanStr = (v) => String(v === null || v === undefined ? '' : v)
+      .replace(/[\u00A0\u200B\u200C\u200D\uFEFF\u2028\u2029]/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+
+    // normalizeRole: toleran terhadap variasi penulisan role di kolom 'role'
+    // sheet Akun ("Guru Wali", "Wali Kelas", "WALI ", dsb) sehingga tidak
+    // lagi gagal login hanya karena penulisan berbeda dari yang diharapkan.
     const normalizeRole = (r) => {
-      const c = String(r || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const c = cleanStr(r).toLowerCase();
       if (c.includes('ortu') || c.includes('orang tua')) return 'ortu';
       if (c.includes('wali')) return 'wali'; // wali, guru wali, wali kelas
       if (c.includes('admin')) return 'admin';
@@ -348,6 +359,8 @@
         const [id, setId] = useState('');
         const [pass, setPass] = useState('');
         const [loading, setLoading] = useState(false);
+        const [showDebug, setShowDebug] = useState(false);
+        const [lastError, setLastError] = useState('');
 
         const handleLogin = async (e) => {
           e.preventDefault();
@@ -360,10 +373,12 @@
           // Pencocokan akun berdasarkan Sheet Google.
           // Role dinormalisasi (lihat normalizeRole) agar toleran terhadap
           // variasi penulisan seperti "Guru Wali", spasi ganda, dsb.
+          // Username & password dibersihkan dengan cleanStr agar karakter
+          // spasi tak-kasat-mata dari copy-paste tidak menggagalkan login.
           const validAccount = dbAkun.find(a => 
             normalizeRole(a.role) === queryRole && 
-            String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase() && 
-            String(a.password).trim() === String(pass).trim()
+            cleanStr(a.username).toLowerCase() === cleanStr(id).toLowerCase() && 
+            cleanStr(a.password) === cleanStr(pass)
           );
 
           if (validAccount) {
@@ -393,12 +408,14 @@
           } else {
             // Pesan error lebih spesifik untuk memudahkan diagnosa data di Spreadsheet
             const roleExists = dbAkun.some(a => normalizeRole(a.role) === queryRole);
-            const userExists = dbAkun.some(a => normalizeRole(a.role) === queryRole && String(a.username).trim().toLowerCase() === String(id).trim().toLowerCase());
+            const userExists = dbAkun.some(a => normalizeRole(a.role) === queryRole && cleanStr(a.username).toLowerCase() === cleanStr(id).toLowerCase());
             let msg = 'Login Gagal! ';
             if (!roleExists) msg += `Tidak ada akun dengan role "${queryRole}" di Sheet Akun.`;
             else if (!userExists) msg += `Username "${id}" tidak ditemukan untuk role ini.`;
             else msg += 'Password salah.';
             showToast(msg, 'error');
+            setLastError(msg);
+            setShowDebug(true); // buka panel debug otomatis agar terlihat langsung di HP
             console.log('DEBUG dbAkun (isi Sheet Akun yang terbaca):', dbAkun);
           }
         };
@@ -436,6 +453,47 @@
                 {loading ? <Activity className="animate-spin" size={20}/> : <ShieldCheck size={20}/>} {loading ? 'Memverifikasi...' : 'Masuk Sekarang'}
               </button>
             </form>
+
+            <button type="button" onClick={()=>setShowDebug(!showDebug)} className="mt-4 text-[10px] text-slate-400 hover:text-slate-600 underline w-full text-center">
+              {showDebug ? 'Sembunyikan' : 'Tidak bisa login? Lihat data akun tersimpan'}
+            </button>
+
+            {showDebug && (
+              <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-slate-600 mb-2">
+                  Status Sinkronisasi: <span className={syncStatus === 'Sheets Terhubung' ? 'text-emerald-600' : 'text-red-600'}>{syncStatus}</span>
+                  {syncStatus !== 'Sheets Terhubung' && <span className="block mt-1 text-red-500 normal-case">Aplikasi belum terhubung ke Google Sheets — periksa Link Web App lewat ikon cloud di pojok kanan atas, dan pastikan deployment Apps Script di-set "Who has access: Anyone".</span>}
+                </p>
+                {lastError && <p className="text-[10px] text-red-600 mb-2 font-semibold">{lastError}</p>}
+                <p className="text-[10px] font-bold text-slate-600 mb-1">Akun dengan role "{role}" yang terbaca dari Sheet Akun ({dbAkun.filter(a=>normalizeRole(a.role)===role).length} akun):</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[9px] border-collapse">
+                    <thead>
+                      <tr className="bg-slate-200 text-slate-700">
+                        <th className="p-1 border border-slate-300 text-left">role (asli)</th>
+                        <th className="p-1 border border-slate-300 text-left">username</th>
+                        <th className="p-1 border border-slate-300 text-left">panjang username</th>
+                        <th className="p-1 border border-slate-300 text-left">target/kelas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dbAkun.filter(a=>normalizeRole(a.role)===role).map((a,i) => (
+                        <tr key={i} className="odd:bg-white even:bg-slate-100">
+                          <td className="p-1 border border-slate-300 font-mono">"{a.role}"</td>
+                          <td className="p-1 border border-slate-300 font-mono">"{a.username}"</td>
+                          <td className="p-1 border border-slate-300 font-mono">{cleanStr(a.username).length} karakter</td>
+                          <td className="p-1 border border-slate-300 font-mono">"{a.target}"</td>
+                        </tr>
+                      ))}
+                      {dbAkun.filter(a=>normalizeRole(a.role)===role).length === 0 && (
+                        <tr><td colSpan="4" className="p-2 text-center text-slate-400 italic">Tidak ada baris dengan role ini di Sheet Akun</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[9px] text-slate-400 mt-2 italic">Bandingkan "panjang username" dengan jumlah digit NIP yang Anda ketik. Jika beda (misal 7 vs 8), berarti ada angka nol di depan yang hilang atau ada spasi tersembunyi di sheet — hapus isi sel tersebut lalu ketik ulang manual.</p>
+              </div>
+            )}
           </section>
         );
       };
