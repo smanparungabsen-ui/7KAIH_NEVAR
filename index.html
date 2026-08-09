@@ -189,6 +189,13 @@
           const reqUrl = cleanUrl.includes('?') ? `${cleanUrl}&action=getUsers` : `${cleanUrl}?action=getUsers`;
           
           const res = await fetch(reqUrl);
+          
+          // Cek apakah Google mengembalikan halaman HTML (Error Izin/Login)
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("text/html")) {
+             throw new Error("Google memblokir akses. Pastikan 'Who has access' diubah menjadi 'Anyone'!");
+          }
+
           const data = await res.json();
           
           if (data && data.siswa && data.akun) {
@@ -198,8 +205,9 @@
             return data; 
           }
         } catch (e) {
-          console.warn("Fetch Error (URL Salah/CORS): ", e);
-          setSyncStatus('Gagal Terhubung');
+          console.warn("Fetch Error (URL Salah/CORS/Izin): ", e);
+          setSyncStatus('Izin Akses Diblokir');
+          if(!isBackground) showToast('Akses ditolak! Periksa izin Deployment Apps Script.', 'error');
         }
         return null;
       };
