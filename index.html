@@ -227,10 +227,29 @@
         try {
           if (!isBackground) setSyncStatus('Menarik Data...');
           const reqUrl = scriptUrl.includes('?') ? `${scriptUrl}&action=getUsers` : `${scriptUrl}?action=getUsers`;
-          
-          const res = await fetch(reqUrl);
-          const data = await res.json();
-          
+
+          const res = await fetch(reqUrl, { redirect: 'follow' });
+          const rawText = await res.text();
+
+          let data;
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseErr) {
+            // Respon BUKAN JSON -> hampir pasti Google mengembalikan halaman
+            // login/izin (deployment "Who has access" belum "Anyone"),
+            // bukan data dari Sheet. Ini penyebab paling umum login gagal
+            // ketika HTML di-hosting terpisah (mis. di Vercel/GitHub Pages).
+            console.warn("Respon Apps Script bukan JSON (cek setting deployment 'Who has access'). Cuplikan respon:", rawText.slice(0, 200));
+            setSyncStatus('Gagal: Cek Akses Deployment');
+            return;
+          }
+
+          if (data && data.status === 'error') {
+            console.warn("Apps Script mengembalikan error:", data.message);
+            setSyncStatus('Gagal: Error di Script');
+            return;
+          }
+
           if (data && data.siswa) {
             setDbSiswa(data.siswa.length > 0 ? data.siswa : DEFAULT_USERS);
             setDbAkun(data.akun && data.akun.length > 0 ? data.akun : DEFAULT_AKUN);
